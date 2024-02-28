@@ -1,11 +1,13 @@
 package prom
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/pete911/kubectl-prom/pkg/k8s"
 	"k8s.io/client-go/rest"
 	"log/slog"
 	"net/url"
+	"strings"
 )
 
 var promPort = "9090"
@@ -35,16 +37,31 @@ func (p Prometheus) Stop() {
 	p.forwarder.Stop()
 }
 
-func (p Prometheus) Query(query string) ([]byte, error) {
+func (p Prometheus) Query(query string) (Data, error) {
 	params := url.Values{"query": []string{query}}
 	statusCode, b, err := p.forwarder.Get("/api/v1/query", params)
 	if err != nil {
-		return nil, fmt.Errorf("query prometheus: response status code %d %w", statusCode, err)
+		return Data{}, fmt.Errorf("query prometheus: response status code %d %w", statusCode, err)
 	}
 
-	data, err := ToData(p.logger, b)
+	data, err := p.ToData(b)
 	if err != nil {
-		return nil, fmt.Errorf("prom response: %w", err)
+		return Data{}, fmt.Errorf("prometheus response: %w", err)
 	}
-	return data.Result, nil
+	return data, nil
+}
+
+func (p Prometheus) ToData(b []byte) (Data, error) {
+	var response Response
+	if err := json.Unmarshal(b, &response); err != nil {
+		return Data{}, err
+	}
+	if len(response.Warnings) != 0 {
+		p.logger.Warn(fmt.Sprintf("prometheus response: %s", strings.Join(response.Warnings, ", ")))
+	}
+
+	if response.Status == "error" {
+		return Data{}, fmt.Errorf("error type: %s, error: %s", response.ErrorType, response.Error)
+	}
+	return response.Data, nil
 }

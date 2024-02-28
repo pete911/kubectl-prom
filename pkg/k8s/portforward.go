@@ -5,9 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
@@ -19,17 +16,13 @@ import (
 
 type PortForward struct {
 	logger     *slog.Logger
-	coreV1     v1.CoreV1Interface
+	client     Client
 	serverURL  url.URL
 	httpClient *http.Client
 	upgrader   spdy.Upgrader
 }
 
 func NewPortForward(logger *slog.Logger, restConfig *rest.Config) (PortForward, error) {
-	cs, err := kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		return PortForward{}, err
-	}
 	serverURL, err := url.Parse(restConfig.Host)
 	if err != nil {
 		return PortForward{}, fmt.Errorf("parse rest config host: %w", err)
@@ -38,10 +31,14 @@ func NewPortForward(logger *slog.Logger, restConfig *rest.Config) (PortForward, 
 	if err != nil {
 		return PortForward{}, err
 	}
+	client, err := NewClient(logger, restConfig)
+	if err != nil {
+		return PortForward{}, err
+	}
 
 	return PortForward{
 		logger:     logger.With("component", "portforward"),
-		coreV1:     cs.CoreV1(),
+		client:     client,
 		serverURL:  *serverURL,
 		httpClient: &http.Client{Transport: transport},
 		upgrader:   upgrader,
@@ -53,7 +50,7 @@ func (p PortForward) Start(namespace, labelSelector, port string) (Forwarder, er
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	pods, err := p.getPods(ctx, namespace, labelSelector)
+	pods, err := p.client.GetPods(ctx, namespace, labelSelector)
 	if err != nil {
 		return Forwarder{}, fmt.Errorf("get pod for port forward: %w", err)
 	}
@@ -93,45 +90,4 @@ func (p PortForward) Start(namespace, labelSelector, port string) (Forwarder, er
 		host:          fmt.Sprintf("http://localhost:%d", ports[0].Local),
 		httpClient:    &http.Client{Timeout: 10 * time.Second},
 	}, nil
-}
-
-func (p PortForward) getPods(ctx context.Context, namespace, labelSelector string) ([]Pod, error) {
-	if namespace == "" {
-		return p.getAllPods(ctx, labelSelector)
-	}
-
-	podList, err := p.coreV1.Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		return nil, err
-	}
-	return toPods(podList.Items), nil
-}
-
-func (p PortForward) getAllPods(ctx context.Context, labelSelector string) ([]Pod, error) {
-	namespaces, err := p.getNamespaces(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get namespaces: %w", err)
-	}
-
-	var pods []Pod
-	for _, namespace := range namespaces {
-		p, err := p.getPods(ctx, namespace, labelSelector)
-		if err != nil {
-			return nil, err
-		}
-		pods = append(pods, p...)
-	}
-	return pods, nil
-}
-
-func (p PortForward) getNamespaces(ctx context.Context) ([]string, error) {
-	namespaceList, err := p.coreV1.Namespaces().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, ns := range namespaceList.Items {
-		out = append(out, ns.Name)
-	}
-	return out, nil
 }

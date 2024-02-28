@@ -32,11 +32,11 @@ func runQueryCmd(_ *cobra.Command, args []string) error {
 	}
 	defer prometheus.Stop()
 
-	b, err := prometheus.Query(args[0])
+	data, err := prometheus.Query(args[0])
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(string(b))
+	fmt.Println(string(data.Result))
 	return nil
 }

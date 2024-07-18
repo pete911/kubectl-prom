@@ -6,7 +6,7 @@ toolchain go1.22.4
 
 require (
 	github.com/spf13/cobra v1.8.1
-	k8s.io/api v0.30.2
+	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.2
 )

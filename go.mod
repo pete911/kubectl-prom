@@ -3,9 +3,9 @@ module github.com/pete911/kubectl-prom
 go 1.23
 require (
 	github.com/spf13/cobra v1.9.1
-	k8s.io/api v0.32.2
+	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
-	k8s.io/client-go v0.32.2
+	k8s.io/client-go v0.32.3
 )
 
 require (
